@@ -1,6 +1,8 @@
+mod translate_key;
+
+use std::fmt;
 use std::fmt::Display;
 use std::sync::RwLock;
-use std::{fmt, sync::Arc};
 
 use flume::{Receiver, Sender};
 use raw_window_handle::{RawWindowHandle, Win32WindowHandle};
@@ -11,6 +13,8 @@ use windows::Win32::{
 };
 
 pub use flume::TryRecvError;
+
+use translate_key::translate_key;
 
 use crate::ListenerError;
 
@@ -44,7 +48,7 @@ unsafe extern "system" fn h_wndproc(
     if let Ok(wndproc) = O_WNDPROC.read() {
         match umsg {
             msg @ (WM_KEYDOWN | WM_SYSKEYDOWN) => {
-                println!("key down!")
+                translate_key(wparam);
             }
             msg @ (WM_KEYUP | WM_SYSKEYUP) => {
                 println!("key up!")
