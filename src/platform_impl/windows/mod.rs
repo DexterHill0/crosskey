@@ -14,6 +14,7 @@ pub use flume::TryRecvError;
 
 use crate::ListenerError;
 
+#[non_exhaustive]
 #[derive(Clone, Debug)]
 pub enum AttachError {
     AttachError(u32),

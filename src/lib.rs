@@ -7,6 +7,7 @@ mod platform_impl;
 
 pub use platform_impl::AttachError;
 
+#[non_exhaustive]
 #[derive(Clone, Debug)]
 pub enum ListenerError {
     InvalidHandle,
