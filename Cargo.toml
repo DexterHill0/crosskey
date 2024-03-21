@@ -7,11 +7,15 @@ edition = "2021"
 serde = ["dep:serde"]
 
 [dependencies]
+flume = "0.11.0"
 raw-window-handle = "0.6.0"
 bitflags = "2.5.0"
 # use keyboard-types?
 serde = { version = "1.0", features = ["derive"], optional = true }
 
-[target.'cfg(windows)'.dependencies.windows]
-version = "0.54.0"
-features = ["Win32_Foundation"]
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.54.0", features = ["Win32_Foundation", "Win32_UI_WindowsAndMessaging"] }
+lazy_static = "1.4.0"
+
+[dev-dependencies]
+winit = "0.29"

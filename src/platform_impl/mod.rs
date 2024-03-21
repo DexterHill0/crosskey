@@ -1,13 +1,17 @@
-#[cfg(target_os = "linux")]
-pub(crate) mod linux;
+#[cfg(any(
+    target_os = "linux",
+    target_os = "dragonfly",
+    target_os = "freebsd",
+    target_os = "openbsd",
+    target_os = "netbsd"
+))]
+#[path = "linux/mod.rs"]
+pub(crate) mod platform;
 #[cfg(target_os = "macos")]
-pub(crate) mod macos;
+#[path = "macos/mod.rs"]
+pub(crate) mod platform;
 #[cfg(target_os = "windows")]
-pub(crate) mod windows;
+#[path = "windows/mod.rs"]
+pub(crate) mod platform;
 
-#[cfg(target_os = "linux")]
-pub(crate) use crate::platform_impl::linux::LinuxListener as PlatformListener;
-#[cfg(target_os = "macos")]
-pub(crate) use crate::platform_impl::macos::MacOsListener as PlatformListener;
-#[cfg(target_os = "windows")]
-pub(crate) use crate::platform_impl::windows::WindowsListener as PlatformListener;
+pub use self::platform::*;
