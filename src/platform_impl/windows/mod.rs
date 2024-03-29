@@ -4,17 +4,15 @@ use std::fmt;
 use std::fmt::Display;
 use std::sync::RwLock;
 
+pub use flume::TryRecvError;
 use flume::{Receiver, Sender};
 use raw_window_handle::{RawWindowHandle, Win32WindowHandle};
-use windows::Win32::UI::WindowsAndMessaging::{WM_KEYDOWN, WM_KEYUP, WM_SYSKEYDOWN, WM_SYSKEYUP};
-use windows::Win32::{
-    Foundation::{GetLastError, HWND, LPARAM, LRESULT, WPARAM},
-    UI::WindowsAndMessaging::{CallWindowProcW, SetWindowLongPtrW, GWLP_WNDPROC},
-};
-
-pub use flume::TryRecvError;
-
 use translate_key::translate_key;
+use windows::Win32::Foundation::{GetLastError, HWND, LPARAM, LRESULT, WPARAM};
+use windows::Win32::UI::WindowsAndMessaging::{
+    CallWindowProcW, SetWindowLongPtrW, GWLP_WNDPROC, WM_KEYDOWN, WM_KEYUP, WM_SYSKEYDOWN,
+    WM_SYSKEYUP,
+};
 
 use crate::ListenerError;
 
@@ -28,7 +26,7 @@ pub enum AttachError {
 impl Display for AttachError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            AttachError::AttachError(e) => write!(f, "failed to attach listener: ({e})"),
+            AttachError::AttachError(e) => write!(f, "failed to attach listener: ({e:#01X})"),
             AttachError::PoisonError => write!(f, "failed to attach listener: poisoned RwLock"),
         }
     }
@@ -49,11 +47,11 @@ unsafe extern "system" fn h_wndproc(
         match umsg {
             msg @ (WM_KEYDOWN | WM_SYSKEYDOWN) => {
                 translate_key(wparam);
-            }
+            },
             msg @ (WM_KEYUP | WM_SYSKEYUP) => {
-                println!("key up!")
-            }
-            _ => {}
+                // println!("key up!")
+            },
+            _ => {},
         }
 
         CallWindowProcW(std::mem::transmute(*wndproc), hwnd, umsg, wparam, lparam)
@@ -86,6 +84,7 @@ impl KeyboardListener {
                 h_wndproc as isize,
             )
         };
+
         if result == 0 {
             return Err(AttachError::AttachError(unsafe { GetLastError().0 }));
         }
@@ -112,5 +111,11 @@ impl KeyboardListener {
             let event = CHANNEL.1.try_recv()?;
             // callback(event);
         }
+    }
+}
+
+impl Drop for KeyboardListener {
+    fn drop(&mut self) {
+        todo!("drop KeyboardListener")
     }
 }

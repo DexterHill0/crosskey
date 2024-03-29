@@ -1,11 +1,16 @@
+mod platform_impl;
+
 use std::fmt::{self, Display};
 
 pub use raw_window_handle::HandleError;
 use raw_window_handle::HasWindowHandle;
 
-mod platform_impl;
+/// Re-exported from [`keyboard-types`](https://crates.io/crates/keyboard-types)
+pub type Key = keyboard_types::Key;
+/// Re-exported from [`keyboard-types`](https://crates.io/crates/keyboard-types)
+pub type Modifiers = keyboard_types::Modifiers;
 
-pub use platform_impl::AttachError;
+pub use crate::platform_impl::AttachError;
 
 #[non_exhaustive]
 #[derive(Clone, Debug)]
