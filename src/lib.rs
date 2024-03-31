@@ -4,6 +4,7 @@ use std::fmt::{self, Display};
 #[cfg(feature = "timestamp")]
 use std::time::SystemTime;
 
+use flume::TryRecvError;
 pub use raw_window_handle::HandleError;
 use raw_window_handle::HasWindowHandle;
 
@@ -72,9 +73,21 @@ impl KeyboardListener {
         Ok(slf)
     }
 
-    pub fn listen() {}
+    /// See: [`KeyboardListener::try_recv`]
+    ///
+    /// **Note: This function is blocking!**
+    pub fn recv<F>(callback: F)
+    where
+        F: Fn(Event),
+    {
+        platform_impl::KeyboardListener::recv(callback)
+    }
 
-    pub fn try_listen() -> Result<(), &'static str> {
-        todo!()
+    /// **Note: This function is blocking!**
+    pub fn try_recv<F>(callback: F) -> Result<(), TryRecvError>
+    where
+        F: Fn(Event),
+    {
+        platform_impl::KeyboardListener::try_recv(callback)
     }
 }

@@ -11,6 +11,23 @@ fn main() {
         KeyboardListener::attatch(&window).expect("failed to make keyboard listener");
     dbg!(&keyboard_listener);
 
+    std::thread::spawn(|| {
+        if let Err(e) = KeyboardListener::try_recv(|e| match e {
+            crosskey::Event::Press { key, repeat_count } => {
+                if repeat_count > 0 {
+                    println!("repeating press!: {key} x {repeat_count}");
+                } else {
+                    println!("press event!: {key}");
+                }
+            },
+            crosskey::Event::Release(key) => {
+                println!("release event!: {key}");
+            },
+        }) {
+            panic!("error while receiving: {e}")
+        }
+    });
+
     event_loop.set_control_flow(ControlFlow::Poll);
     event_loop.set_control_flow(ControlFlow::Wait);
 

@@ -38,7 +38,7 @@ impl Display for AttachError {
 
 lazy_static::lazy_static! {
     static ref O_WNDPROC: RwLock<isize> = RwLock::new(0);
-    static ref CHANNEL: (Sender<()>, Receiver<()>) = flume::unbounded();
+    static ref CHANNEL: (Sender<Event>, Receiver<Event>) = flume::unbounded();
 }
 
 static REPEAT_COUNT: AtomicUsize = AtomicUsize::new(0);
@@ -77,7 +77,7 @@ unsafe extern "system" fn h_wndproc(
                     Event::Release(key_event)
                 };
 
-                dbg!(event);
+                CHANNEL.0.send(event);
             },
             _ => {},
         }
@@ -130,21 +130,25 @@ impl KeyboardListener {
         Ok(())
     }
 
-    /// See: [`KeyboardListener::try_recv`]
-    ///
-    /// **Note: This function is blocking!**
-    pub(crate) fn recv<F>(callback: F) {
+    pub(crate) fn recv<F>(callback: F)
+    where
+        F: Fn(Event),
+    {
         match Self::try_recv(callback) {
             Ok(..) => (),
             Err(e) => panic!("failed to listen: {e}"),
         }
     }
 
-    /// **Note: This function is blocking!**
-    pub(crate) fn try_recv<F>(callback: F) -> Result<(), TryRecvError> {
+    pub(crate) fn try_recv<F>(callback: F) -> Result<(), TryRecvError>
+    where
+        F: Fn(Event),
+    {
         loop {
-            let event = CHANNEL.1.try_recv()?;
-            // callback(event);
+            if !CHANNEL.1.is_empty() {
+                let event = CHANNEL.1.try_recv()?;
+                callback(event);
+            }
         }
     }
 }
