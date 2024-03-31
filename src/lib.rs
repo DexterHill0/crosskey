@@ -42,15 +42,16 @@ pub struct KeyEvent {
     #[cfg(feature = "timestamp")]
     pub timestamp: SystemTime,
 
-    raw: platform_impl::RawKeyEvent,
+    raw: platform_impl::RawKeyEventData,
 }
 
+#[derive(Clone, Debug, PartialEq, Hash)]
 pub enum Event {
-    Press { key: KeyEvent, repeat: bool },
+    Press { key: KeyEvent, repeat_count: usize },
     Release(KeyEvent),
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct KeyboardListener {
     inner: platform_impl::KeyboardListener,
 }

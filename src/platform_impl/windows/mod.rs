@@ -3,7 +3,9 @@ mod translate_key;
 
 use std::fmt;
 use std::fmt::Display;
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::RwLock;
+use std::time::SystemTime;
 
 pub use flume::TryRecvError;
 use flume::{Receiver, Sender};
@@ -11,12 +13,12 @@ use raw_window_handle::{RawWindowHandle, Win32WindowHandle};
 use translate_key::translate_key;
 use windows::Win32::Foundation::{GetLastError, HWND, LPARAM, LRESULT, WPARAM};
 use windows::Win32::UI::WindowsAndMessaging::{
-    CallWindowProcW, SetWindowLongPtrW, GWLP_WNDPROC, WM_KEYDOWN, WM_KEYUP, WM_SYSKEYDOWN,
-    WM_SYSKEYUP,
+    CallWindowProcW, SetWindowLongPtrW, UnhookWindowsHookEx, GWLP_WNDPROC, HHOOK, WM_KEYDOWN,
+    WM_KEYUP, WM_SYSKEYDOWN, WM_SYSKEYUP,
 };
 
 use crate::platform_impl::platform::translate_key::get_modifiers;
-use crate::ListenerError;
+use crate::{Event, KeyEvent, ListenerError};
 
 #[non_exhaustive]
 #[derive(Clone, Debug)]
@@ -39,6 +41,8 @@ lazy_static::lazy_static! {
     static ref CHANNEL: (Sender<()>, Receiver<()>) = flume::unbounded();
 }
 
+static REPEAT_COUNT: AtomicUsize = AtomicUsize::new(0);
+
 unsafe extern "system" fn h_wndproc(
     hwnd: HWND,
     umsg: u32,
@@ -47,16 +51,33 @@ unsafe extern "system" fn h_wndproc(
 ) -> LRESULT {
     if let Ok(wndproc) = O_WNDPROC.read() {
         match umsg {
-            msg @ (WM_KEYDOWN | WM_SYSKEYDOWN) => {
+            msg @ (WM_KEYDOWN | WM_SYSKEYDOWN | WM_KEYUP | WM_SYSKEYUP) => {
                 let modifiers = get_modifiers();
-                let key = translate_key(wparam);
+                let (key, raw_key_event_data) = translate_key(wparam);
 
-                dbg!(modifiers);
+                let key_event = KeyEvent {
+                    key,
+                    modifiers,
+                    #[cfg(feature = "timestamp")]
+                    timestamp: SystemTime::now(),
+                    raw: raw_key_event_data,
+                };
 
-                println!("{}", key);
-            },
-            msg @ (WM_KEYUP | WM_SYSKEYUP) => {
-                // println!("key up!")
+                let event = if matches!(msg, WM_KEYDOWN | WM_SYSKEYDOWN) {
+                    let e = Event::Press {
+                        key: key_event,
+                        repeat_count: REPEAT_COUNT.load(Ordering::Relaxed),
+                    };
+
+                    REPEAT_COUNT.fetch_add(1, Ordering::Relaxed);
+
+                    e
+                } else {
+                    REPEAT_COUNT.store(0, Ordering::Relaxed);
+                    Event::Release(key_event)
+                };
+
+                dbg!(event);
             },
             _ => {},
         }
@@ -69,12 +90,12 @@ unsafe extern "system" fn h_wndproc(
 
 #[derive(Copy, Clone, Debug, PartialEq, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub(crate) struct RawKeyEvent {
+pub(crate) struct RawKeyEventData {
     virtual_key_code: u32,
     virtual_scan_code: u32,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub(crate) struct KeyboardListener {
     handle: Win32WindowHandle,
 }
@@ -130,6 +151,20 @@ impl KeyboardListener {
 
 impl Drop for KeyboardListener {
     fn drop(&mut self) {
-        todo!("drop KeyboardListener")
+        if let Ok(wndproc) = O_WNDPROC.read() {
+            if unsafe { UnhookWindowsHookEx(HHOOK(*wndproc)) }.is_err() {
+                let err = unsafe { GetLastError() };
+
+                // `Invalid hook handle`
+                // i'm not exactly sure what to do here
+                // if you close the window and *then* the listener is dropped this error will occur
+                // since the window no longer exists, but, what if this occurs for some other reason
+                if err.0 != 1404 {
+                    panic!("failed to remove windows hook: {err:?}");
+                }
+            }
+        } else {
+            panic!("drop called with missing windows hook");
+        }
     }
 }

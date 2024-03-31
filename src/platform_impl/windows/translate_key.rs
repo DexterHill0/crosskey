@@ -15,6 +15,8 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{
 
 use crate::{Key, Modifiers};
 
+use super::RawKeyEventData;
+
 type KeyboardState = [u8; 256];
 
 const NO_MODIFIERS: [u8; 256] = [0; 256];
@@ -116,10 +118,19 @@ pub fn get_modifiers() -> Modifiers {
     modifiers
 }
 
-pub fn translate_key(raw_key_code: WPARAM) -> Key {
+pub fn translate_key(raw_key_code: WPARAM) -> (Key, RawKeyEventData) {
     let key_code: u32 = match raw_key_code.0.try_into() {
         Ok(k) => k,
-        Err(_) => return Key::Unidentified,
+        Err(_) => {
+            return (
+                Key::Unidentified,
+                // should 0 be used?
+                RawKeyEventData {
+                    virtual_key_code: 0,
+                    virtual_scan_code: 0,
+                },
+            );
+        },
     };
 
     let kb_layout = unsafe { GetKeyboardLayout(0) };
@@ -132,12 +143,18 @@ pub fn translate_key(raw_key_code: WPARAM) -> Key {
     let result = unsafe { ToUnicodeEx(key_code, scan_code, &NO_MODIFIERS, key_char, 1, kb_layout) };
 
     if result == 0 {
-        return Key::Unidentified;
+        return (
+            Key::Unidentified,
+            RawKeyEventData {
+                virtual_key_code: key_code,
+                virtual_scan_code: scan_code,
+            },
+        );
     }
 
     let char_code = key_char[0];
 
-    if (0x0000..=0x001F).contains(&char_code) || (0x007F..=0x009F).contains(&char_code) {
+    let key = if (0x0000..=0x001F).contains(&char_code) || (0x007F..=0x009F).contains(&char_code) {
         // non printable UTF-16 characters
 
         // as far as i can tell these are all the VK keys that have a keyboard-types equivalent
@@ -220,5 +237,13 @@ pub fn translate_key(raw_key_code: WPARAM) -> Key {
             Ok(c) => Key::Character(c),
             Err(_) => Key::Unidentified,
         }
-    }
+    };
+
+    (
+        key,
+        RawKeyEventData {
+            virtual_key_code: key_code,
+            virtual_scan_code: scan_code,
+        },
+    )
 }
