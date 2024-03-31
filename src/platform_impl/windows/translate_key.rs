@@ -2,267 +2,223 @@ use windows::core::PCSTR;
 use windows::Win32::Foundation::WPARAM;
 use windows::Win32::Globalization::{WideCharToMultiByte, CP_UTF8};
 use windows::Win32::UI::Input::KeyboardAndMouse::{
-    GetKeyState, GetKeyboardLayout, MapVirtualKeyExW, ToUnicodeEx, VkKeyScanExA, MAPVK_VK_TO_VSC,
-    MAPVK_VSC_TO_VK, VIRTUAL_KEY, VK_SHIFT,
+    GetKeyState, GetKeyboardLayout, GetKeyboardState, MapVirtualKeyExW, ToUnicodeEx,
+    MAPVK_VK_TO_VSC, VIRTUAL_KEY, VK_ACCEPT, VK_ATTN, VK_BROWSER_BACK, VK_BROWSER_FAVORITES,
+    VK_BROWSER_FORWARD, VK_BROWSER_HOME, VK_BROWSER_REFRESH, VK_BROWSER_SEARCH, VK_BROWSER_STOP,
+    VK_CANCEL, VK_CAPITAL, VK_CLEAR, VK_CONTROL, VK_CONVERT, VK_DELETE, VK_END, VK_ESCAPE,
+    VK_EXECUTE, VK_F1, VK_F10, VK_F11, VK_F12, VK_F13, VK_F14, VK_F15, VK_F16, VK_F17, VK_F18,
+    VK_F19, VK_F2, VK_F20, VK_F21, VK_F22, VK_F23, VK_F24, VK_F3, VK_F4, VK_F5, VK_F6, VK_F7,
+    VK_F8, VK_F9, VK_HELP, VK_HOME, VK_INSERT, VK_LAUNCH_MAIL, VK_LCONTROL, VK_LMENU, VK_LSHIFT,
+    VK_LWIN, VK_MEDIA_PLAY_PAUSE, VK_MEDIA_STOP, VK_MENU, VK_NUMLOCK, VK_PAUSE, VK_PLAY, VK_PRINT,
+    VK_RCONTROL, VK_RETURN, VK_RMENU, VK_RSHIFT, VK_RWIN, VK_SCROLL, VK_SELECT, VK_SHIFT, VK_TAB,
 };
 
-use crate::Key;
+use crate::{Key, Modifiers};
+
+type KeyboardState = [u8; 256];
+
+const NO_MODIFIERS: [u8; 256] = [0; 256];
+
+const PRESSED: u8 = 0b10000000;
+const TOGGLED: u8 = 0b00000001;
+
+pub(crate) trait ToKeyboardState {
+    fn to_keyboard_state(&self) -> KeyboardState;
+}
+
+impl ToKeyboardState for Modifiers {
+    fn to_keyboard_state(&self) -> KeyboardState {
+        macro_rules! i {
+            ($vk:expr) => {
+                $vk.0 as usize
+            };
+        }
+
+        let mut kb_state: KeyboardState = [0; 256];
+
+        if self.contains(Modifiers::ALT) {
+            kb_state[i!(VK_MENU)] = PRESSED;
+        }
+
+        if self.contains(Modifiers::CONTROL) {
+            kb_state[i!(VK_CONTROL)] = PRESSED;
+        }
+
+        if self.contains(Modifiers::SHIFT) {
+            kb_state[i!(VK_SHIFT)] = PRESSED;
+        }
+
+        if self.contains(Modifiers::META) || self.contains(Modifiers::SUPER) {
+            kb_state[i!(VK_LWIN)] = PRESSED;
+            kb_state[i!(VK_RWIN)] = PRESSED;
+        }
+
+        if self.contains(Modifiers::CAPS_LOCK) {
+            kb_state[i!(VK_CAPITAL)] = TOGGLED;
+        }
+
+        if self.contains(Modifiers::SCROLL_LOCK) {
+            kb_state[i!(VK_SCROLL)] = TOGGLED;
+        }
+
+        if self.contains(Modifiers::NUM_LOCK) {
+            kb_state[i!(VK_NUMLOCK)] = TOGGLED;
+        }
+
+        kb_state
+    }
+}
+
+pub fn get_modifiers() -> Modifiers {
+    let mut modifiers = Modifiers::empty();
+
+    macro_rules! pressed {
+        ($vk:expr) => {{
+            unsafe { GetKeyState($vk.0.into()) & (PRESSED as i16) != 0 }
+        }};
+    }
+    macro_rules! toggled {
+        ($vk:expr) => {{
+            unsafe { GetKeyState($vk.0.into()) & (TOGGLED as i16) == 1 }
+        }};
+    }
+
+    if pressed!(VK_MENU) || pressed!(VK_LMENU) || pressed!(VK_RMENU) {
+        modifiers.insert(Modifiers::ALT);
+    }
+
+    if pressed!(VK_CONTROL) || pressed!(VK_LCONTROL) || pressed!(VK_RCONTROL) {
+        modifiers.insert(Modifiers::CONTROL);
+    }
+
+    if pressed!(VK_SHIFT) || pressed!(VK_LSHIFT) || pressed!(VK_RSHIFT) {
+        modifiers.insert(Modifiers::SHIFT);
+    }
+
+    if pressed!(VK_LWIN) || pressed!(VK_RWIN) {
+        // should these both be set?
+        modifiers.insert(Modifiers::SUPER);
+        modifiers.insert(Modifiers::META);
+    }
+
+    if toggled!(VK_CAPITAL) {
+        modifiers.insert(Modifiers::CAPS_LOCK);
+    }
+
+    if toggled!(VK_SCROLL) {
+        modifiers.insert(Modifiers::SCROLL_LOCK);
+    }
+
+    if toggled!(VK_NUMLOCK) {
+        modifiers.insert(Modifiers::NUM_LOCK);
+    }
+
+    modifiers
+}
 
 pub fn translate_key(raw_key_code: WPARAM) -> Key {
-    let key_code: u16 = match raw_key_code.0.try_into() {
+    let key_code: u32 = match raw_key_code.0.try_into() {
         Ok(k) => k,
         Err(_) => return Key::Unidentified,
     };
 
-    match VIRTUAL_KEY(key_code) {
-        VK_0 => Key::Unidentified,
-        VK_1 => Key::Unidentified,
-        VK_2 => Key::Unidentified,
-        VK_3 => Key::Unidentified,
-        VK_4 => Key::Unidentified,
-        VK_5 => Key::Unidentified,
-        VK_6 => Key::Unidentified,
-        VK_7 => Key::Unidentified,
-        VK_8 => Key::Unidentified,
-        VK_9 => Key::Unidentified,
-        VK_A => Key::Unidentified,
-        VK_B => Key::Unidentified,
-        VK_C => Key::Unidentified,
-        VK_D => Key::Unidentified,
-        VK_E => Key::Unidentified,
-        VK_F => Key::Unidentified,
-        VK_G => Key::Unidentified,
-        VK_H => Key::Unidentified,
-        VK_I => Key::Unidentified,
-        VK_J => Key::Unidentified,
-        VK_K => Key::Unidentified,
-        VK_L => Key::Unidentified,
-        VK_M => Key::Unidentified,
-        VK_N => Key::Unidentified,
-        VK_O => Key::Unidentified,
-        VK_P => Key::Unidentified,
-        VK_Q => Key::Unidentified,
-        VK_R => Key::Unidentified,
-        VK_S => Key::Unidentified,
-        VK_T => Key::Unidentified,
-        VK_U => Key::Unidentified,
-        VK_V => Key::Unidentified,
-        VK_W => Key::Unidentified,
-        VK_X => Key::Unidentified,
-        VK_Y => Key::Unidentified,
-        VK_Z => Key::Unidentified,
+    let kb_layout = unsafe { GetKeyboardLayout(0) };
 
-        VK_ABNT_C1 => Key::Unidentified,
-        VK_ABNT_C2 => Key::Unidentified,
-        VK_ACCEPT => Key::Unidentified,
-        VK_ADD => Key::Unidentified,
-        VK_APPS => Key::Unidentified,
-        VK_ATTN => Key::Unidentified,
-        VK_BACK => Key::Unidentified,
-        VK_BROWSER_BACK => Key::Unidentified,
-        VK_BROWSER_FAVORITES => Key::Unidentified,
-        VK_BROWSER_FORWARD => Key::Unidentified,
-        VK_BROWSER_HOME => Key::Unidentified,
-        VK_BROWSER_REFRESH => Key::Unidentified,
-        VK_BROWSER_SEARCH => Key::Unidentified,
-        VK_BROWSER_STOP => Key::Unidentified,
-        VK_CANCEL => Key::Unidentified,
-        VK_CAPITAL => Key::Unidentified,
-        VK_CLEAR => Key::Unidentified,
-        VK_CONTROL => Key::Unidentified,
-        VK_CONVERT => Key::Unidentified,
-        VK_CRSEL => Key::Unidentified,
-        VK_DBE_ALPHANUMERIC => Key::Unidentified,
-        VK_DBE_CODEINPUT => Key::Unidentified,
-        VK_DBE_DBCSCHAR => Key::Unidentified,
-        VK_DBE_DETERMINESTRING => Key::Unidentified,
-        VK_DBE_ENTERDLGCONVERSIONMODE => Key::Unidentified,
-        VK_DBE_ENTERIMECONFIGMODE => Key::Unidentified,
-        VK_DBE_ENTERWORDREGISTERMODE => Key::Unidentified,
-        VK_DBE_FLUSHSTRING => Key::Unidentified,
-        VK_DBE_HIRAGANA => Key::Unidentified,
-        VK_DBE_KATAKANA => Key::Unidentified,
-        VK_DBE_NOCODEINPUT => Key::Unidentified,
-        VK_DBE_NOROMAN => Key::Unidentified,
-        VK_DBE_ROMAN => Key::Unidentified,
-        VK_DBE_SBCSCHAR => Key::Unidentified,
-        VK_DECIMAL => Key::Unidentified,
-        VK_DELETE => Key::Unidentified,
-        VK_DIVIDE => Key::Unidentified,
-        VK_DOWN => Key::Unidentified,
-        VK_END => Key::Unidentified,
-        VK_EREOF => Key::Unidentified,
-        VK_ESCAPE => Key::Unidentified,
-        VK_EXECUTE => Key::Unidentified,
-        VK_EXSEL => Key::Unidentified,
-        VK_F1 => Key::Unidentified,
-        VK_F10 => Key::Unidentified,
-        VK_F11 => Key::Unidentified,
-        VK_F12 => Key::Unidentified,
-        VK_F13 => Key::Unidentified,
-        VK_F14 => Key::Unidentified,
-        VK_F15 => Key::Unidentified,
-        VK_F16 => Key::Unidentified,
-        VK_F17 => Key::Unidentified,
-        VK_F18 => Key::Unidentified,
-        VK_F19 => Key::Unidentified,
-        VK_F2 => Key::Unidentified,
-        VK_F20 => Key::Unidentified,
-        VK_F21 => Key::Unidentified,
-        VK_F22 => Key::Unidentified,
-        VK_F23 => Key::Unidentified,
-        VK_F24 => Key::Unidentified,
-        VK_F3 => Key::Unidentified,
-        VK_F4 => Key::Unidentified,
-        VK_F5 => Key::Unidentified,
-        VK_F6 => Key::Unidentified,
-        VK_F7 => Key::Unidentified,
-        VK_F8 => Key::Unidentified,
-        VK_F9 => Key::Unidentified,
-        VK_FINAL => Key::Unidentified,
-        VK_GAMEPAD_A => Key::Unidentified,
-        VK_GAMEPAD_B => Key::Unidentified,
-        VK_GAMEPAD_DPAD_DOWN => Key::Unidentified,
-        VK_GAMEPAD_DPAD_LEFT => Key::Unidentified,
-        VK_GAMEPAD_DPAD_RIGHT => Key::Unidentified,
-        VK_GAMEPAD_DPAD_UP => Key::Unidentified,
-        VK_GAMEPAD_LEFT_SHOULDER => Key::Unidentified,
-        VK_GAMEPAD_LEFT_THUMBSTICK_BUTTON => Key::Unidentified,
-        VK_GAMEPAD_LEFT_THUMBSTICK_DOWN => Key::Unidentified,
-        VK_GAMEPAD_LEFT_THUMBSTICK_LEFT => Key::Unidentified,
-        VK_GAMEPAD_LEFT_THUMBSTICK_RIGHT => Key::Unidentified,
-        VK_GAMEPAD_LEFT_THUMBSTICK_UP => Key::Unidentified,
-        VK_GAMEPAD_LEFT_TRIGGER => Key::Unidentified,
-        VK_GAMEPAD_MENU => Key::Unidentified,
-        VK_GAMEPAD_RIGHT_SHOULDER => Key::Unidentified,
-        VK_GAMEPAD_RIGHT_THUMBSTICK_BUTTON => Key::Unidentified,
-        VK_GAMEPAD_RIGHT_THUMBSTICK_DOWN => Key::Unidentified,
-        VK_GAMEPAD_RIGHT_THUMBSTICK_LEFT => Key::Unidentified,
-        VK_GAMEPAD_RIGHT_THUMBSTICK_RIGHT => Key::Unidentified,
-        VK_GAMEPAD_RIGHT_THUMBSTICK_UP => Key::Unidentified,
-        VK_GAMEPAD_RIGHT_TRIGGER => Key::Unidentified,
-        VK_GAMEPAD_VIEW => Key::Unidentified,
-        VK_GAMEPAD_X => Key::Unidentified,
-        VK_GAMEPAD_Y => Key::Unidentified,
-        VK_HANGEUL => Key::Unidentified,
-        VK_HANGUL => Key::Unidentified,
-        VK_HANJA => Key::Unidentified,
-        VK_HELP => Key::Unidentified,
-        VK_HOME => Key::Unidentified,
-        VK_ICO_00 => Key::Unidentified,
-        VK_ICO_CLEAR => Key::Unidentified,
-        VK_ICO_HELP => Key::Unidentified,
-        VK_IME_OFF => Key::Unidentified,
-        VK_IME_ON => Key::Unidentified,
-        VK_INSERT => Key::Unidentified,
-        VK_JUNJA => Key::Unidentified,
-        VK_KANA => Key::Unidentified,
-        VK_KANJI => Key::Unidentified,
-        VK_LAUNCH_APP1 => Key::Unidentified,
-        VK_LAUNCH_APP2 => Key::Unidentified,
-        VK_LAUNCH_MAIL => Key::Unidentified,
-        VK_LAUNCH_MEDIA_SELECT => Key::Unidentified,
-        VK_LBUTTON => Key::Unidentified,
-        VK_LCONTROL => Key::Unidentified,
-        VK_LEFT => Key::Unidentified,
-        VK_LMENU => Key::Unidentified,
-        VK_LSHIFT => Key::Unidentified,
-        VK_LWIN => Key::Unidentified,
-        VK_MBUTTON => Key::Unidentified,
-        VK_MEDIA_NEXT_TRACK => Key::Unidentified,
-        VK_MEDIA_PLAY_PAUSE => Key::Unidentified,
-        VK_MEDIA_PREV_TRACK => Key::Unidentified,
-        VK_MEDIA_STOP => Key::Unidentified,
-        VK_MENU => Key::Unidentified,
-        VK_MODECHANGE => Key::Unidentified,
-        VK_MULTIPLY => Key::Unidentified,
-        VK_NAVIGATION_ACCEPT => Key::Unidentified,
-        VK_NAVIGATION_CANCEL => Key::Unidentified,
-        VK_NAVIGATION_DOWN => Key::Unidentified,
-        VK_NAVIGATION_LEFT => Key::Unidentified,
-        VK_NAVIGATION_MENU => Key::Unidentified,
-        VK_NAVIGATION_RIGHT => Key::Unidentified,
-        VK_NAVIGATION_UP => Key::Unidentified,
-        VK_NAVIGATION_VIEW => Key::Unidentified,
-        VK_NEXT => Key::Unidentified,
-        VK_NONAME => Key::Unidentified,
-        VK_NONCONVERT => Key::Unidentified,
-        VK_NUMLOCK => Key::Unidentified,
-        VK_NUMPAD0 => Key::Unidentified,
-        VK_NUMPAD1 => Key::Unidentified,
-        VK_NUMPAD2 => Key::Unidentified,
-        VK_NUMPAD3 => Key::Unidentified,
-        VK_NUMPAD4 => Key::Unidentified,
-        VK_NUMPAD5 => Key::Unidentified,
-        VK_NUMPAD6 => Key::Unidentified,
-        VK_NUMPAD7 => Key::Unidentified,
-        VK_NUMPAD8 => Key::Unidentified,
-        VK_NUMPAD9 => Key::Unidentified,
-        VK_OEM_1 => Key::Unidentified,
-        VK_OEM_102 => Key::Unidentified,
-        VK_OEM_2 => Key::Unidentified,
-        VK_OEM_3 => Key::Unidentified,
-        VK_OEM_4 => Key::Unidentified,
-        VK_OEM_5 => Key::Unidentified,
-        VK_OEM_6 => Key::Unidentified,
-        VK_OEM_7 => Key::Unidentified,
-        VK_OEM_8 => Key::Unidentified,
-        VK_OEM_ATTN => Key::Unidentified,
-        VK_OEM_AUTO => Key::Unidentified,
-        VK_OEM_AX => Key::Unidentified,
-        VK_OEM_BACKTAB => Key::Unidentified,
-        VK_OEM_CLEAR => Key::Unidentified,
-        VK_OEM_COMMA => Key::Unidentified,
-        VK_OEM_COPY => Key::Unidentified,
-        VK_OEM_CUSEL => Key::Unidentified,
-        VK_OEM_ENLW => Key::Unidentified,
-        VK_OEM_FINISH => Key::Unidentified,
-        VK_OEM_FJ_JISHO => Key::Unidentified,
-        VK_OEM_FJ_LOYA => Key::Unidentified,
-        VK_OEM_FJ_MASSHOU => Key::Unidentified,
-        VK_OEM_FJ_ROYA => Key::Unidentified,
-        VK_OEM_FJ_TOUROKU => Key::Unidentified,
-        VK_OEM_JUMP => Key::Unidentified,
-        VK_OEM_MINUS => Key::Unidentified,
-        VK_OEM_NEC_EQUAL => Key::Unidentified,
-        VK_OEM_PA1 => Key::Unidentified,
-        VK_OEM_PA2 => Key::Unidentified,
-        VK_OEM_PA3 => Key::Unidentified,
-        VK_OEM_PERIOD => Key::Unidentified,
-        VK_OEM_PLUS => Key::Unidentified,
-        VK_OEM_RESET => Key::Unidentified,
-        VK_OEM_WSCTRL => Key::Unidentified,
-        VK_PA1 => Key::Unidentified,
-        VK_PACKET => Key::Unidentified,
-        VK_PAUSE => Key::Unidentified,
-        VK_PLAY => Key::Unidentified,
-        VK_PRINT => Key::Unidentified,
-        VK_PRIOR => Key::Unidentified,
-        VK_PROCESSKEY => Key::Unidentified,
-        VK_RBUTTON => Key::Unidentified,
-        VK_RCONTROL => Key::Unidentified,
-        VK_RETURN => Key::Unidentified,
-        VK_RIGHT => Key::Unidentified,
-        VK_RMENU => Key::Unidentified,
-        VK_RSHIFT => Key::Unidentified,
-        VK_RWIN => Key::Unidentified,
-        VK_SCROLL => Key::Unidentified,
-        VK_SELECT => Key::Unidentified,
-        VK_SEPARATOR => Key::Unidentified,
-        VK_SHIFT => Key::Unidentified,
-        VK_SLEEP => Key::Unidentified,
-        VK_SNAPSHOT => Key::Unidentified,
-        VK_SPACE => Key::Unidentified,
-        VK_SUBTRACT => Key::Unidentified,
-        VK_TAB => Key::Unidentified,
-        VK_UP => Key::Unidentified,
-        VK_VOLUME_DOWN => Key::Unidentified,
-        VK_VOLUME_MUTE => Key::Unidentified,
-        VK_VOLUME_UP => Key::Unidentified,
-        VK_XBUTTON1 => Key::Unidentified,
-        VK_XBUTTON2 => Key::Unidentified,
-        VK_ZOOM => Key::Unidentified,
-        VK__none_ => Key::Unidentified,
-        _ => Key::Unidentified,
+    let scan_code = unsafe { MapVirtualKeyExW(key_code, MAPVK_VK_TO_VSC, kb_layout) };
+
+    // `WCHAR` is UTF-16, so 2 bytes
+    let key_char: &mut [u16] = &mut [0];
+
+    let result = unsafe { ToUnicodeEx(key_code, scan_code, &NO_MODIFIERS, key_char, 1, kb_layout) };
+
+    if result == 0 {
+        return Key::Unidentified;
+    }
+
+    let char_code = key_char[0];
+
+    if (0x0000..=0x001F).contains(&char_code) || (0x007F..=0x009F).contains(&char_code) {
+        // non printable UTF-16 characters
+
+        // as far as i can tell these are all the VK keys that have a keyboard-types equivalent
+        #[deny(unused_variables, non_snake_case)]
+        match VIRTUAL_KEY(key_code as u16) {
+            VK_MENU => Key::Alt,
+            VK_LMENU => Key::Alt,
+            VK_RMENU => Key::AltGraph,
+            VK_RETURN => Key::Enter,
+            VK_CONTROL => Key::Control,
+            VK_LCONTROL => Key::Control,
+            VK_RCONTROL => Key::Control,
+            VK_SHIFT => Key::Shift,
+            VK_LSHIFT => Key::Shift,
+            VK_RSHIFT => Key::Shift,
+            VK_LWIN => Key::Super,
+            VK_RWIN => Key::Super,
+            VK_CAPITAL => Key::CapsLock,
+            VK_SCROLL => Key::ScrollLock,
+            VK_NUMLOCK => Key::NumLock,
+            VK_TAB => Key::Tab,
+            VK_END => Key::End,
+            VK_HOME => Key::Home,
+            VK_CLEAR => Key::Clear,
+            VK_DELETE => Key::Delete,
+            VK_INSERT => Key::Insert,
+            VK_ACCEPT => Key::Accept,
+            VK_ATTN => Key::Attn,
+            VK_CANCEL => Key::Cancel,
+            VK_ESCAPE => Key::Escape,
+            VK_EXECUTE => Key::Execute,
+            VK_HELP => Key::Help,
+            VK_PAUSE => Key::Pause,
+            VK_PLAY => Key::Play,
+            VK_SELECT => Key::Select,
+            VK_CONVERT => Key::Convert,
+            VK_MEDIA_PLAY_PAUSE => Key::MediaPlayPause,
+            VK_MEDIA_STOP => Key::MediaStop,
+            VK_PRINT => Key::Print,
+            VK_LAUNCH_MAIL => Key::LaunchMail,
+            VK_BROWSER_BACK => Key::BrowserBack,
+            VK_BROWSER_FAVORITES => Key::BrowserFavorites,
+            VK_BROWSER_FORWARD => Key::BrowserForward,
+            VK_BROWSER_HOME => Key::BrowserHome,
+            VK_BROWSER_REFRESH => Key::BrowserRefresh,
+            VK_BROWSER_SEARCH => Key::BrowserSearch,
+            VK_BROWSER_STOP => Key::BrowserStop,
+            VK_F1 => Key::F1,
+            VK_F2 => Key::F2,
+            VK_F3 => Key::F3,
+            VK_F4 => Key::F4,
+            VK_F5 => Key::F5,
+            VK_F6 => Key::F6,
+            VK_F7 => Key::F7,
+            VK_F8 => Key::F8,
+            VK_F9 => Key::F9,
+            VK_F10 => Key::F10,
+            VK_F11 => Key::F11,
+            VK_F12 => Key::F12,
+            VK_F13 => Key::F13,
+            VK_F14 => Key::F14,
+            VK_F15 => Key::F15,
+            VK_F16 => Key::F16,
+            VK_F17 => Key::F17,
+            VK_F18 => Key::F18,
+            VK_F19 => Key::F19,
+            VK_F20 => Key::F20,
+            VK_F21 => Key::F21,
+            VK_F22 => Key::F22,
+            VK_F23 => Key::F23,
+            VK_F24 => Key::F24,
+            _ => Key::Unidentified,
+        }
+    } else {
+        // printable UTF-16 characters
+
+        let str_char = String::from_utf16(key_char);
+
+        match str_char {
+            Ok(c) => Key::Character(c),
+            Err(_) => Key::Unidentified,
+        }
     }
 }

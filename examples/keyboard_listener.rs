@@ -1,10 +1,7 @@
-use winit::{
-    event::{Event, WindowEvent},
-    event_loop::{ControlFlow, EventLoop},
-    window::WindowBuilder,
-};
-
 use crosskey::KeyboardListener;
+use winit::event::{Event, WindowEvent};
+use winit::event_loop::{ControlFlow, EventLoop};
+use winit::window::WindowBuilder;
 
 fn main() {
     let event_loop = EventLoop::new().unwrap();
@@ -24,14 +21,14 @@ fn main() {
                 ..
             } => {
                 elwt.exit();
-            }
+            },
             Event::AboutToWait => {
                 window.request_redraw();
-            }
+            },
             Event::WindowEvent {
                 event: WindowEvent::RedrawRequested,
                 ..
-            } => {}
+            } => {},
             _ => (),
         })
         .unwrap();

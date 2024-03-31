@@ -1,6 +1,8 @@
 mod platform_impl;
 
 use std::fmt::{self, Display};
+#[cfg(feature = "timestamp")]
+use std::time::SystemTime;
 
 pub use raw_window_handle::HandleError;
 use raw_window_handle::HasWindowHandle;
@@ -28,6 +30,24 @@ impl Display for ListenerError {
             ListenerError::AttachError(e) => write!(f, "{e}"),
         }
     }
+}
+
+#[derive(Clone, Debug, PartialEq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct KeyEvent {
+    pub key: Key,
+    pub modifiers: Modifiers,
+
+    #[cfg_attr(all(feature = "serde", not(feature = "timestamp")), serde(skip))]
+    #[cfg(feature = "timestamp")]
+    pub timestamp: SystemTime,
+
+    raw: platform_impl::RawKeyEvent,
+}
+
+pub enum Event {
+    Press { key: KeyEvent, repeat: bool },
+    Release(KeyEvent),
 }
 
 #[derive(Debug)]

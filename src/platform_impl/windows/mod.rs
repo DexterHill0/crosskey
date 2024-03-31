@@ -1,3 +1,4 @@
+pub mod key_display;
 mod translate_key;
 
 use std::fmt;
@@ -14,6 +15,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
     WM_SYSKEYUP,
 };
 
+use crate::platform_impl::platform::translate_key::get_modifiers;
 use crate::ListenerError;
 
 #[non_exhaustive]
@@ -46,7 +48,12 @@ unsafe extern "system" fn h_wndproc(
     if let Ok(wndproc) = O_WNDPROC.read() {
         match umsg {
             msg @ (WM_KEYDOWN | WM_SYSKEYDOWN) => {
-                translate_key(wparam);
+                let modifiers = get_modifiers();
+                let key = translate_key(wparam);
+
+                dbg!(modifiers);
+
+                println!("{}", key);
             },
             msg @ (WM_KEYUP | WM_SYSKEYUP) => {
                 // println!("key up!")
@@ -58,6 +65,13 @@ unsafe extern "system" fn h_wndproc(
     } else {
         LRESULT(1)
     }
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub(crate) struct RawKeyEvent {
+    virtual_key_code: u32,
+    virtual_scan_code: u32,
 }
 
 #[derive(Debug)]

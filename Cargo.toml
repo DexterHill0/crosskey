@@ -5,6 +5,7 @@ edition = "2021"
 
 [features]
 serde = ["dep:serde", "keyboard-types/serde"]
+timestamp = []
 
 [dependencies]
 flume = "0.11.0"
