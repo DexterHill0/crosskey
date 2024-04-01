@@ -11,9 +11,8 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{
     VK_RWIN, VK_SCROLL, VK_SELECT, VK_SHIFT, VK_TAB,
 };
 
-use crate::{Key, Modifiers};
-
 use super::RawKeyEventData;
+use crate::{Key, Modifiers};
 
 type KeyboardState = [u8; 256];
 
@@ -138,17 +137,11 @@ pub fn translate_key(raw_key_code: WPARAM) -> (Key, RawKeyEventData) {
     // `WCHAR` is UTF-16, so 2 bytes
     let key_char: &mut [u16] = &mut [0];
 
-    let result = unsafe { ToUnicodeEx(key_code, scan_code, &NO_MODIFIERS, key_char, 1, kb_layout) };
-
-    if result == 0 {
-        return (
-            Key::Unidentified,
-            RawKeyEventData {
-                virtual_key_code: key_code,
-                virtual_scan_code: scan_code,
-            },
-        );
-    }
+    // a `0` result will fall through to the non-printable characters,
+    // which it is likely to be anyway (I.E shift, ctrl, etc)
+    // and if it wasnt one of those it will return Key::Unidentified anyway
+    // so we dont need to check the result
+    unsafe { ToUnicodeEx(key_code, scan_code, &NO_MODIFIERS, key_char, 1, kb_layout) };
 
     let char_code = key_char[0];
 
