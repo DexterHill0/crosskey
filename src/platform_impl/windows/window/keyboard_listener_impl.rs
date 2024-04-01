@@ -2,7 +2,7 @@ use raw_window_handle::RawWindowHandle;
 use windows::Win32::Foundation::{GetLastError, HWND};
 use windows::Win32::UI::WindowsAndMessaging::{SetWindowLongPtrW, GWLP_WNDPROC};
 
-use super::{h_wndproc, O_WNDPROC};
+use super::{h_wndproc, O_WNDPROC_HWND};
 use crate::platform_impl::KeyboardListener;
 use crate::{AttachError, ListenerError};
 
@@ -18,20 +18,18 @@ impl KeyboardListener {
 
     #[allow(clippy::fn_to_numeric_cast)]
     pub(crate) fn attatch(&self) -> Result<(), AttachError> {
-        let result = unsafe {
-            SetWindowLongPtrW(
-                HWND(self.handle.hwnd.into()),
-                GWLP_WNDPROC,
-                h_wndproc as isize,
-            )
-        };
+        let hwnd: isize = self.handle.hwnd.into();
+
+        let result = unsafe { SetWindowLongPtrW(HWND(hwnd), GWLP_WNDPROC, h_wndproc as isize) };
 
         if result == 0 {
             return Err(AttachError::AttachError(unsafe { GetLastError().0 }));
         }
 
-        let mut wndproc = O_WNDPROC.write().map_err(|_| AttachError::PoisonError)?;
-        *wndproc = result;
+        let mut wndproc = O_WNDPROC_HWND
+            .write()
+            .map_err(|_| AttachError::PoisonError)?;
+        *wndproc = (result, hwnd);
 
         Ok(())
     }
@@ -39,8 +37,11 @@ impl KeyboardListener {
 
 impl Drop for KeyboardListener {
     fn drop(&mut self) {
-        if let Ok(_wndproc) = O_WNDPROC.read() {
-            todo!()
+        if let Ok(wndproc) = O_WNDPROC_HWND.read() {
+            let result = unsafe { SetWindowLongPtrW(HWND(wndproc.1), GWLP_WNDPROC, wndproc.0) };
+            if result == 0 {
+                panic!("failed to remove window procedure in KeyboardListener::drop")
+            }
         }
     }
 }

@@ -138,8 +138,8 @@ pub fn translate_key(raw_key_code: WPARAM) -> (Key, RawKeyEventData) {
     let key_char: &mut [u16] = &mut [0];
 
     // a `0` result will fall through to the non-printable characters,
-    // which it is likely to be anyway (I.E shift, ctrl, etc)
-    // and if it wasnt one of those it will return Key::Unidentified anyway
+    // which it is likely to be anyway (I.E shift, ctrl, etc),
+    // and if it wasnt one of those it will return Key::Unidentified
     // so we dont need to check the result
     unsafe { ToUnicodeEx(key_code, scan_code, &NO_MODIFIERS, key_char, 1, kb_layout) };
 

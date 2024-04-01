@@ -2,6 +2,9 @@ mod key_display;
 mod translate_key;
 mod window;
 
+#[cfg(feature = "global")]
+mod global;
+
 use std::fmt::{self, Display};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::SystemTime;
@@ -71,3 +74,7 @@ pub(crate) struct RawKeyEventData {
 pub(crate) struct KeyboardListener {
     handle: Win32WindowHandle,
 }
+
+#[cfg(feature = "hotkeys")]
+#[derive(Clone, Debug)]
+pub(crate) struct HotkeyListener {}

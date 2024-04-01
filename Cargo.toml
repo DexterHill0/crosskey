@@ -6,6 +6,7 @@ edition = "2021"
 [features]
 serde = ["dep:serde", "keyboard-types/serde"]
 hotkeys = []
+global = []
 
 [dependencies]
 kanal = "0.1.0-pre8"
