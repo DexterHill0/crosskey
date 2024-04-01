@@ -3,12 +3,10 @@ mod translate_key;
 
 use std::fmt;
 use std::fmt::Display;
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::RwLock;
 use std::time::SystemTime;
 
-pub use flume::TryRecvError;
-use flume::{Receiver, Sender};
 use raw_window_handle::{RawWindowHandle, Win32WindowHandle};
 use translate_key::translate_key;
 use windows::Win32::Foundation::{GetLastError, HWND, LPARAM, LRESULT, WPARAM};
@@ -18,7 +16,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
 };
 
 use crate::platform_impl::platform::translate_key::get_modifiers;
-use crate::{Event, KeyEvent, ListenerError};
+use crate::{Event, KeyEvent, ListenerError, CHANNEL};
 
 #[non_exhaustive]
 #[derive(Clone, Debug)]
@@ -38,7 +36,6 @@ impl Display for AttachError {
 
 lazy_static::lazy_static! {
     static ref O_WNDPROC: RwLock<isize> = RwLock::new(0);
-    static ref CHANNEL: (Sender<Event>, Receiver<Event>) = flume::unbounded();
 }
 
 static REPEAT_COUNT: AtomicUsize = AtomicUsize::new(0);
@@ -50,36 +47,33 @@ unsafe extern "system" fn h_wndproc(
     lparam: LPARAM,
 ) -> LRESULT {
     if let Ok(wndproc) = O_WNDPROC.read() {
-        match umsg {
-            msg @ (WM_KEYDOWN | WM_SYSKEYDOWN | WM_KEYUP | WM_SYSKEYUP) => {
-                let modifiers = get_modifiers();
-                let (key, raw_key_event_data) = translate_key(wparam);
+        if let msg @ (WM_KEYDOWN | WM_SYSKEYDOWN | WM_KEYUP | WM_SYSKEYUP) = umsg {
+            let modifiers = get_modifiers();
+            let (key, raw_key_event_data) = translate_key(wparam);
 
-                let key_event = KeyEvent {
-                    key,
-                    modifiers,
-                    #[cfg(feature = "timestamp")]
-                    timestamp: SystemTime::now(),
-                    raw: raw_key_event_data,
+            let key_event = KeyEvent {
+                key,
+                modifiers,
+                #[cfg(feature = "timestamp")]
+                timestamp: SystemTime::now(),
+                raw: raw_key_event_data,
+            };
+
+            let event = if matches!(msg, WM_KEYDOWN | WM_SYSKEYDOWN) {
+                let e = Event::Press {
+                    key: key_event,
+                    repeat_count: REPEAT_COUNT.load(Ordering::Relaxed),
                 };
 
-                let event = if matches!(msg, WM_KEYDOWN | WM_SYSKEYDOWN) {
-                    let e = Event::Press {
-                        key: key_event,
-                        repeat_count: REPEAT_COUNT.load(Ordering::Relaxed),
-                    };
+                REPEAT_COUNT.fetch_add(1, Ordering::Relaxed);
 
-                    REPEAT_COUNT.fetch_add(1, Ordering::Relaxed);
+                e
+            } else {
+                REPEAT_COUNT.store(0, Ordering::Relaxed);
+                Event::Release(key_event)
+            };
 
-                    e
-                } else {
-                    REPEAT_COUNT.store(0, Ordering::Relaxed);
-                    Event::Release(key_event)
-                };
-
-                CHANNEL.0.send(event);
-            },
-            _ => {},
+            let _ = CHANNEL.0.send(event);
         }
 
         CallWindowProcW(std::mem::transmute(*wndproc), hwnd, umsg, wparam, lparam)
@@ -128,28 +122,6 @@ impl KeyboardListener {
         *wndproc = result;
 
         Ok(())
-    }
-
-    pub(crate) fn recv<F>(callback: F)
-    where
-        F: Fn(Event),
-    {
-        match Self::try_recv(callback) {
-            Ok(..) => (),
-            Err(e) => panic!("failed to listen: {e}"),
-        }
-    }
-
-    pub(crate) fn try_recv<F>(callback: F) -> Result<(), TryRecvError>
-    where
-        F: Fn(Event),
-    {
-        loop {
-            if !CHANNEL.1.is_empty() {
-                let event = CHANNEL.1.try_recv()?;
-                callback(event);
-            }
-        }
     }
 }
 

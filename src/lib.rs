@@ -4,7 +4,7 @@ use std::fmt::{self, Display};
 #[cfg(feature = "timestamp")]
 use std::time::SystemTime;
 
-use flume::TryRecvError;
+use kanal::{ReceiveError, Receiver, Sender};
 pub use raw_window_handle::HandleError;
 use raw_window_handle::HasWindowHandle;
 
@@ -52,6 +52,11 @@ pub enum Event {
     Release(KeyEvent),
 }
 
+lazy_static::lazy_static! {
+    // pub static ref CHANNEL: (Sender<Event>, Receiver<Event>) = flume::unbounded();
+    pub static ref CHANNEL: (Sender<Event>, Receiver<Event>) = kanal::unbounded();
+}
+
 #[derive(Clone, Debug)]
 pub struct KeyboardListener {
     inner: platform_impl::KeyboardListener,
@@ -80,14 +85,20 @@ impl KeyboardListener {
     where
         F: Fn(Event),
     {
-        platform_impl::KeyboardListener::recv(callback)
+        match Self::try_recv(callback) {
+            Ok(..) => (),
+            Err(e) => panic!("failed to receive: {e}"),
+        }
     }
 
     /// **Note: This function is blocking!**
-    pub fn try_recv<F>(callback: F) -> Result<(), TryRecvError>
+    pub fn try_recv<F>(callback: F) -> Result<(), ReceiveError>
     where
         F: Fn(Event),
     {
-        platform_impl::KeyboardListener::try_recv(callback)
+        loop {
+            let event = CHANNEL.1.recv()?;
+            callback(event);
+        }
     }
 }
