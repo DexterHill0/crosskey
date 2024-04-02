@@ -2,9 +2,8 @@ use std::fmt::{self, Display};
 
 use windows::Win32::UI::Input::KeyboardAndMouse::{GetKeyboardLayout, ToUnicodeEx};
 
-use crate::{Key, KeyEvent};
-
 use super::translate_key::ToKeyboardState;
+use crate::{Key, KeyEvent};
 
 impl Display for KeyEvent {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

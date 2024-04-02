@@ -1,16 +1,20 @@
+#![allow(clippy::type_complexity)]
+
 mod platform_impl;
 
 #[cfg(feature = "hotkeys")]
 mod hotkey_listener;
 
+use std::collections::HashMap;
 use std::fmt::{self, Display};
+use std::sync::RwLock;
 use std::time::SystemTime;
 
 #[cfg(feature = "hotkeys")]
 pub use hotkey_listener::*;
-use kanal::{ReceiveError, Receiver, Sender};
+use kanal::{Receiver, Sender};
 pub use raw_window_handle::HandleError;
-use raw_window_handle::HasWindowHandle;
+use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 
 pub use crate::platform_impl::AttachError;
 
@@ -36,8 +40,14 @@ pub enum Event {
     Release(KeyEvent),
 }
 
+#[derive(PartialEq, Hash, Eq)]
+pub(crate) struct SendSyncRwh(pub platform_impl::PlatformWindowHandle);
+// SAFETY: the data itself is not being sent across threads
+unsafe impl Send for SendSyncRwh {}
+unsafe impl Sync for SendSyncRwh {}
+
 lazy_static::lazy_static! {
-    pub static ref CHANNEL: (Sender<Event>, Receiver<Event>) = kanal::unbounded();
+    pub(crate) static ref CHANNELS: RwLock<HashMap<SendSyncRwh, (Sender<Event>, Receiver<Event>)>> = RwLock::new(HashMap::new());
 }
 
 #[non_exhaustive]
@@ -58,6 +68,22 @@ impl Display for ListenerError {
     }
 }
 
+pub enum ReceiveError {
+    PoisonError,
+    Kanal(kanal::ReceiveError),
+}
+
+impl Display for ReceiveError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ReceiveError::PoisonError => {
+                write!(f, "RwLock poisoned in try_recv (multi_window enabled)")
+            },
+            ReceiveError::Kanal(k) => write!(f, "{k}"),
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct KeyboardListener {
     inner: platform_impl::KeyboardListener,
@@ -65,14 +91,22 @@ pub struct KeyboardListener {
 
 impl KeyboardListener {
     pub fn attatch<H: HasWindowHandle>(handle: &H) -> Result<Self, ListenerError> {
+        let rwh = handle
+            .window_handle()
+            .map_err(ListenerError::HandleError)?
+            .as_raw();
+
         let slf = Self {
-            inner: platform_impl::KeyboardListener::from_raw_window_handle(
-                handle
-                    .window_handle()
-                    .map_err(ListenerError::HandleError)?
-                    .as_raw(),
-            )?,
+            inner: platform_impl::KeyboardListener::from_raw_window_handle(rwh)?,
         };
+
+        CHANNELS
+            .write()
+            .map_err(|_| ListenerError::AttachError(AttachError::PoisonError))?
+            .insert(
+                SendSyncRwh(slf.inner.platform_window_handle()),
+                kanal::unbounded(),
+            );
 
         slf.inner.attatch().map_err(ListenerError::AttachError)?;
 
@@ -82,23 +116,28 @@ impl KeyboardListener {
     /// See: [`KeyboardListener::try_recv`]
     ///
     /// **Note: This function is blocking!**
-    pub fn recv<F>(callback: F)
+    pub fn recv<F>(&self, callback: F)
     where
         F: Fn(Event),
     {
-        match Self::try_recv(callback) {
+        match self.try_recv(callback) {
             Ok(..) => (),
             Err(e) => panic!("failed to receive: {e}"),
         }
     }
 
     /// **Note: This function is blocking!**
-    pub fn try_recv<F>(callback: F) -> Result<(), ReceiveError>
+    pub fn try_recv<F>(&self, callback: F) -> Result<(), ReceiveError>
     where
         F: Fn(Event),
     {
+        let channels = CHANNELS.read().map_err(|_| ReceiveError::PoisonError)?;
+        let channel = channels
+            .get(&SendSyncRwh(self.inner.platform_window_handle()))
+            .unwrap();
+
         loop {
-            let event = CHANNEL.1.recv()?;
+            let event = channel.1.recv().map_err(ReceiveError::Kanal)?;
             callback(event);
         }
     }

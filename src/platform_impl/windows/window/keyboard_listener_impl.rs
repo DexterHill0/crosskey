@@ -2,8 +2,8 @@ use raw_window_handle::RawWindowHandle;
 use windows::Win32::Foundation::{GetLastError, HWND};
 use windows::Win32::UI::WindowsAndMessaging::{SetWindowLongPtrW, GWLP_WNDPROC};
 
-use super::{h_wndproc, O_WNDPROC_HWND};
-use crate::platform_impl::KeyboardListener;
+use super::{h_wndproc, WINDOW_SUBCLASSES};
+use crate::platform_impl::{KeyboardListener, PlatformWindowHandle};
 use crate::{AttachError, ListenerError};
 
 impl KeyboardListener {
@@ -26,22 +26,32 @@ impl KeyboardListener {
             return Err(AttachError::AttachError(unsafe { GetLastError().0 }));
         }
 
-        let mut wndproc = O_WNDPROC_HWND
+        let mut wndproc = WINDOW_SUBCLASSES
             .write()
             .map_err(|_| AttachError::PoisonError)?;
-        *wndproc = (result, hwnd);
+
+        wndproc.insert(hwnd, result);
 
         Ok(())
+    }
+
+    pub(crate) fn platform_window_handle(&self) -> PlatformWindowHandle {
+        self.handle.hwnd.into()
     }
 }
 
 impl Drop for KeyboardListener {
     fn drop(&mut self) {
-        if let Ok(wndproc) = O_WNDPROC_HWND.read() {
-            let result = unsafe { SetWindowLongPtrW(HWND(wndproc.1), GWLP_WNDPROC, wndproc.0) };
+        if let Ok(wndproc) = WINDOW_SUBCLASSES.read() {
+            let hwnd: isize = self.handle.hwnd.into();
+
+            let result = unsafe { SetWindowLongPtrW(HWND(hwnd), GWLP_WNDPROC, wndproc[&hwnd]) };
+
             if result == 0 {
                 panic!("failed to remove window procedure in KeyboardListener::drop")
             }
+        } else {
+            panic!("RwLock poisoned in KeyboardListener::drop ")
         }
     }
 }

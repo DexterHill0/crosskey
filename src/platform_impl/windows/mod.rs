@@ -10,12 +10,14 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::SystemTime;
 
 use raw_window_handle::Win32WindowHandle;
-use windows::Win32::Foundation::WPARAM;
+use windows::Win32::Foundation::{HWND, WPARAM};
 use windows::Win32::UI::WindowsAndMessaging::{WM_KEYDOWN, WM_SYSKEYDOWN};
 
 use self::translate_key::get_modifiers;
 use crate::platform_impl::platform::translate_key::translate_key;
-use crate::{Event, KeyEvent, CHANNEL};
+use crate::{Event, KeyEvent, SendSyncRwh, CHANNELS};
+
+pub(crate) type PlatformWindowHandle = isize;
 
 #[non_exhaustive]
 #[derive(Clone, Debug)]
@@ -35,7 +37,7 @@ impl Display for AttachError {
 
 static REPEAT_COUNT: AtomicUsize = AtomicUsize::new(0);
 
-pub(crate) fn handle_key_message(msg: u32, wparam: WPARAM) {
+pub(crate) fn handle_key_message(msg: u32, hwnd: HWND, wparam: WPARAM) {
     let modifiers = get_modifiers();
     let (key, raw_key_event_data) = translate_key(wparam);
 
@@ -60,7 +62,10 @@ pub(crate) fn handle_key_message(msg: u32, wparam: WPARAM) {
         Event::Release(key_event)
     };
 
-    let _ = CHANNEL.0.send(event);
+    let channels = CHANNELS.read().expect("poisoned channels");
+    let channel = &channels[&SendSyncRwh(hwnd.0)];
+
+    let _ = channel.0.send(event);
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Hash)]
@@ -77,4 +82,6 @@ pub(crate) struct KeyboardListener {
 
 #[cfg(feature = "hotkeys")]
 #[derive(Clone, Debug)]
-pub(crate) struct HotkeyListener {}
+pub(crate) struct HotkeyListener {
+    handle: Win32WindowHandle,
+}
