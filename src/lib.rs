@@ -77,7 +77,7 @@ impl Display for ReceiveError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             ReceiveError::PoisonError => {
-                write!(f, "RwLock poisoned in try_recv (multi_window enabled)")
+                write!(f, "RwLock poisoned in try_recv")
             },
             ReceiveError::Kanal(k) => write!(f, "{k}"),
         }
