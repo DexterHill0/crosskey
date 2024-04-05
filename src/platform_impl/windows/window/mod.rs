@@ -1,4 +1,3 @@
-mod hotkey_listener_impl;
 mod keyboard_listener_impl;
 
 use std::collections::HashMap;
@@ -24,11 +23,8 @@ pub(crate) unsafe extern "system" fn h_wndproc(
     lparam: LPARAM,
 ) -> LRESULT {
     if let Ok(subclass) = WINDOW_SUBCLASSES.read() {
-        match umsg {
-            msg @ (WM_KEYDOWN | WM_SYSKEYDOWN | WM_KEYUP | WM_SYSKEYUP) => {
-                handle_key_message(msg, hwnd, wparam)
-            },
-            _ => (),
+        if let msg @ (WM_KEYDOWN | WM_SYSKEYDOWN | WM_KEYUP | WM_SYSKEYUP) = umsg {
+            handle_key_message(msg, hwnd, wparam)
         }
 
         CallWindowProcW(

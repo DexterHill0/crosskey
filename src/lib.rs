@@ -2,16 +2,11 @@
 
 mod platform_impl;
 
-#[cfg(feature = "hotkeys")]
-mod hotkey_listener;
-
 use std::collections::HashMap;
 use std::fmt::{self, Display};
 use std::sync::RwLock;
 use std::time::SystemTime;
 
-#[cfg(feature = "hotkeys")]
-pub use hotkey_listener::*;
 use kanal::{Receiver, Sender};
 pub use raw_window_handle::HandleError;
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
